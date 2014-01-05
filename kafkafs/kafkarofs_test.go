@@ -18,6 +18,11 @@ func NewMockKafkaClient() *MockKafkaClient {
 
 func (mkc *MockKafkaClient) setMessage(topic string, partition int32, offset int64,
 	bytes []byte) {
+	mkc.createPartition(topic, partition)
+	mkc.messages[topic][partition][offset] = bytes
+}
+
+func (mkc *MockKafkaClient) createPartition(topic string, partition int32) {
 	_, tExists := mkc.messages[topic]
 	if !tExists {
 		mkc.messages[topic] = make(map[int32]map[int64][]byte)
@@ -26,7 +31,6 @@ func (mkc *MockKafkaClient) setMessage(topic string, partition int32, offset int
 	if !pExists {
 		mkc.messages[topic][partition] = make(map[int64][]byte)
 	}
-	mkc.messages[topic][partition][offset] = bytes
 }
 
 func (mkc *MockKafkaClient) GetTopics() ([]string, error) {
@@ -131,7 +135,7 @@ func TestWithMessages(t *testing.T) {
 	}
 
 	if len(rootDir) != 1 {
-		t.Error("No partition dir")
+		t.Error("No topic dir")
 	}
 
 	topicDir, code := fs.OpenDir("topic", nil)
@@ -179,5 +183,20 @@ func TestWithMessages(t *testing.T) {
 
 	if partDir[1].Name != "1" {
 		t.Errorf("Wrong name for partition %s", topicDir[1].Name)
+	}
+}
+
+func TestEmptyPartition(t *testing.T) {
+	mkc := NewMockKafkaClient()
+	mkc.createPartition("topic", 0)
+	fs := NewKafkaRoFs(mkc)
+	partitionDir, code := fs.OpenDir("topic/0", nil)
+
+	if code != fuse.OK {
+		t.Errorf("Fused Error code %s", code)
+	}
+
+	if len(partitionDir) != 0 {
+		t.Errorf("Partition non-empty %s", partitionDir)
 	}
 }
