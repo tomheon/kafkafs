@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hanwen/go-fuse/fuse"
@@ -23,6 +24,7 @@ type KafkaRoFs struct {
 
 	KafkaClient KafkaClient
 	userFiles   map[string]bool
+	userFilesM  sync.RWMutex
 }
 
 type parsedPath struct {
@@ -158,7 +160,7 @@ func (fs *KafkaRoFs) GetAttr(name string, context *fuse.Context) (*fuse.Attr,
 		if msgBytes == nil {
 			return nil, fuse.ENOENT
 		}
-		fs.userFiles[name] = true
+		fs.addUserFile(parsed.Topic, parsed.Partition, parsed.Offset)
 		return &fuse.Attr{Mode: fuse.S_IFREG | 0400,
 			Size: uint64(len(msgBytes))}, fuse.OK
 	}
@@ -210,7 +212,14 @@ func (fs *KafkaRoFs) openPartition(topic string, partition int32,
 			Mode: fuse.S_IFREG})
 	}
 
+	var paths []string
+	fs.userFilesM.RLock()
 	for path, _ := range fs.userFiles {
+		paths = append(paths, path)
+	}
+	fs.userFilesM.RUnlock()
+
+	for _, path := range paths {
 		parsed, err := fs.parseAndValidate(path)
 		if err != nil {
 			log.Panicf("Error was non-nil, bad user path %s", err)
@@ -330,7 +339,7 @@ func (fs *KafkaRoFs) Mknod(name string, mode uint32, dev uint32,
 			return fuse.ENOENT
 		}
 
-		err = fs.addUserFile(parsed.Topic, parsed.Partition, parsed.Offset, msgBytes)
+		err = fs.addUserFile(parsed.Topic, parsed.Partition, parsed.Offset)
 		if err != nil {
 			return fuse.EIO
 		}
@@ -341,10 +350,11 @@ func (fs *KafkaRoFs) Mknod(name string, mode uint32, dev uint32,
 	return fuse.ENOENT
 }
 
-func (fs *KafkaRoFs) addUserFile(topic string, partition int32, offset int64,
-	msgBytes []byte) error {
+func (fs *KafkaRoFs) addUserFile(topic string, partition int32, offset int64) error {
 	path := fmt.Sprintf("%s/%d/%d", topic, partition, offset)
+	fs.userFilesM.Lock()
 	fs.userFiles[path] = true
+	fs.userFilesM.Unlock()
 	return nil
 }
 
