@@ -26,7 +26,7 @@ type KafkaRoFs struct {
 }
 
 type parsedPath struct {
-    IsValid bool
+	IsValid bool
 	IsRoot bool
 	Topic string
 	Partition int32
@@ -145,11 +145,11 @@ func (fs *KafkaRoFs) GetAttr(name string, context *fuse.Context) (*fuse.Attr,
 	// root or a topic
 	case parsed.IsRoot, parsed.Offset == -1 && parsed.Partition == -1:
 		return &fuse.Attr{Mode: fuse.S_IFDIR | 0500}, fuse.OK
-    // partition
+	// partition
 	case parsed.Offset == -1:
 		return &fuse.Attr{Mode: fuse.S_IFDIR | 0700}, fuse.OK
-    // offset / msg
-    case true:
+	// offset / msg
+	case true:
 		msgBytes, err := fs.KafkaClient.GetMessage(parsed.Topic, parsed.Partition,
 			parsed.Offset)
 		if err != nil {
