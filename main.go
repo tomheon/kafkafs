@@ -3,9 +3,9 @@ package main
 import (
 	"fmt"
 	"log"
-	"time"
 	"os"
 	"os/signal"
+	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/hanwen/go-fuse/fuse"
@@ -24,12 +24,12 @@ func unmountOnInt(c chan os.Signal, server *fuse.Server, client *sarama.Client) 
 
 func main() {
 	addrs := []string{"localhost:9092"}
-	client, err := sarama.NewClient("kafkafs", addrs, &sarama.ClientConfig{MetadataRetries: 10, WaitForElection: 250*time.Millisecond})
+	client, err := sarama.NewClient("kafkafs", addrs, &sarama.ClientConfig{MetadataRetries: 10, WaitForElection: 250 * time.Millisecond})
 	if err != nil {
 		log.Fatalf("Error from client %s", err)
 	}
 
-	kClient := kafkafs.NewKafkaClient(client, 1024 * 1024)
+	kClient := kafkafs.NewKafkaClient(client, 1024*1024)
 
 	nfs := pathfs.NewPathNodeFs(kafkafs.NewKafkaRoFs(kClient), nil)
 
