@@ -1,13 +1,13 @@
 package kafkafs
 
 import (
-	"path/filepath"
+	"fmt"
 	"log"
+	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
-	"regexp"
 	"time"
-	"fmt"
 
 	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
@@ -22,20 +22,20 @@ type KafkaRoFs struct {
 	pathfs.FileSystem
 
 	KafkaClient KafkaClient
-	userFiles map[string]bool
+	userFiles   map[string]bool
 }
 
 type parsedPath struct {
-	IsValid bool
-	IsRoot bool
-	Topic string
+	IsValid   bool
+	IsRoot    bool
+	Topic     string
 	Partition int32
-	Offset int64
+	Offset    int64
 }
 
 func (fs *KafkaRoFs) parseAndValidate(name string) (parsedPath, error) {
 	parsed := parsedPath{IsValid: true, IsRoot: false, Topic: "", Partition: -1,
-			Offset: -1}
+		Offset: -1}
 	slashed := filepath.ToSlash(name)
 	re := regexp.MustCompile("/{2,}")
 	normal := re.ReplaceAllString(slashed, "/")
@@ -205,8 +205,8 @@ func (fs *KafkaRoFs) openPartition(topic string, partition int32,
 
 	entries := []fuse.DirEntry{fuse.DirEntry{Name: strconv.FormatInt(earliest, 10),
 		Mode: fuse.S_IFREG}}
-	if earliest != next - 1 {
-		entries = append(entries, fuse.DirEntry{Name: strconv.FormatInt(next - 1, 10),
+	if earliest != next-1 {
+		entries = append(entries, fuse.DirEntry{Name: strconv.FormatInt(next-1, 10),
 			Mode: fuse.S_IFREG})
 	}
 
@@ -216,7 +216,7 @@ func (fs *KafkaRoFs) openPartition(topic string, partition int32,
 			log.Panicf("Error was non-nil, bad user path %s", err)
 		}
 		if parsed.Partition == partition && parsed.Offset != earliest &&
-			parsed.Offset != next - 1 {
+			parsed.Offset != next-1 {
 			entries = append(entries, fuse.DirEntry{
 				Name: strconv.FormatInt(parsed.Offset, 10), Mode: fuse.S_IFREG})
 		}
@@ -270,7 +270,7 @@ func (fs *KafkaRoFs) Open(name string, flags uint32,
 		return nil, fuse.ENOENT
 	}
 
-	if flags & fuse.O_ANYWRITE != 0 {
+	if flags&fuse.O_ANYWRITE != 0 {
 		return nil, fuse.EPERM
 	}
 

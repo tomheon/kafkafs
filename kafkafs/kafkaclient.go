@@ -65,7 +65,7 @@ func (tsClient *kafkaClient) GetBoundingOffsets(topic string,
 	}
 
 	offsets := offsetsResp.Blocks[topic][partition].Offsets
-	earliest := offsets[len(offsets) - 1]
+	earliest := offsets[len(offsets)-1]
 	next := offsets[0]
 
 	return earliest, next, nil
@@ -100,5 +100,5 @@ func (tsClient *kafkaClient) GetMessage(topic string, partition int32,
 }
 
 func NewKafkaClient(client *sarama.Client, maxBytes int32) KafkaClient {
-    return &kafkaClient{Client: client, MaxBytes: maxBytes}
+	return &kafkaClient{Client: client, MaxBytes: maxBytes}
 }
