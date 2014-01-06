@@ -152,7 +152,7 @@ func (fs *KafkaRoFs) GetAttr(name string, context *fuse.Context) (*fuse.Attr,
 		return &fuse.Attr{Mode: fuse.S_IFDIR | 0700}, fuse.OK
 	// offset / msg
 	case true:
-		msgBytes, ferr := fs.blockingGet(parsed.Topic, parsed.Partition, parsed.Offset)
+		msgBytes, ferr := fs.getMessage(parsed.Topic, parsed.Partition, parsed.Offset)
 		if err != nil {
 			return nil, ferr
 		}
@@ -164,55 +164,25 @@ func (fs *KafkaRoFs) GetAttr(name string, context *fuse.Context) (*fuse.Attr,
 	return nil, fuse.ENOENT
 }
 
-func (fs *KafkaRoFs) blockingGet(topic string, partition int32, offset int64) ([]byte,
+func (fs *KafkaRoFs) getMessage(topic string, partition int32, offset int64) ([]byte,
 	fuse.Status) {
-	// we don't want to block waiting on an offset that is in the past
-	// and no longer available from kafka
-	nE := func() (bool, error) {
-		return fs.offsetNotExpired(topic, partition, offset)
+	msgBytes, err := fs.KafkaClient.GetMessage(topic, partition, offset)
+
+	if err != nil {
+		return nil, fuse.EIO
 	}
 
-	try := 0
-
-	for notExpired, err := nE(); notExpired; notExpired, err = nE() {
-		if err != nil {
-			return nil, fuse.EIO
-		}
-
-		isFuture, err := fs.offsetIsFuture(topic, partition, offset)
-		if err != nil {
-			return nil, fuse.EIO
-		}
-
-		if isFuture {
-			if try > 10 {
-				return nil, fuse.ENOENT
-			}
-			time.Sleep(100 * time.Millisecond)
-			try++
-			continue
-		}
-
-		msgBytes, err := fs.KafkaClient.GetMessage(topic, partition, offset)
-		if err != nil {
-			return nil, fuse.EIO
-		}
-
-		if msgBytes == nil {
-			// this shouldn't happen unless the messages are expiring
-			// very fast, but who knows
-			return nil, fuse.ENOENT
-		}
-
-		err = fs.addUserFile(topic, partition, offset)
-		if err != nil {
-			return nil, fuse.EIO
-		}
-
-		return msgBytes, fuse.OK
+	if msgBytes == nil {
+		// this means the message doesn't exist (yet, possibly)
+		return nil, fuse.ENOENT
 	}
 
-	return nil, fuse.ENOENT
+	err = fs.addUserFile(topic, partition, offset)
+	if err != nil {
+		return nil, fuse.EIO
+	}
+
+	return msgBytes, fuse.OK
 }
 
 func (fs *KafkaRoFs) OpenDir(name string, context *fuse.Context) ([]fuse.DirEntry,
@@ -330,7 +300,7 @@ func (fs *KafkaRoFs) Open(name string, flags uint32,
 		return nil, fuse.EPERM
 	}
 
-	msgBytes, ferr := fs.blockingGet(parsed.Topic, parsed.Partition, parsed.Offset)
+	msgBytes, ferr := fs.getMessage(parsed.Topic, parsed.Partition, parsed.Offset)
 
 	if ferr != fuse.OK {
 		return nil, ferr
