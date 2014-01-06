@@ -152,17 +152,58 @@ func (fs *KafkaRoFs) GetAttr(name string, context *fuse.Context) (*fuse.Attr,
 		return &fuse.Attr{Mode: fuse.S_IFDIR | 0700}, fuse.OK
 	// offset / msg
 	case true:
-		msgBytes, err := fs.KafkaClient.GetMessage(parsed.Topic, parsed.Partition,
-			parsed.Offset)
+		msgBytes, ferr := fs.blockingGet(parsed.Topic, parsed.Partition, parsed.Offset)
 		if err != nil {
-			return nil, fuse.EIO
-		}
-		if msgBytes == nil {
-			return nil, fuse.ENOENT
+			return nil, ferr
 		}
 		fs.addUserFile(parsed.Topic, parsed.Partition, parsed.Offset)
 		return &fuse.Attr{Mode: fuse.S_IFREG | 0400,
 			Size: uint64(len(msgBytes))}, fuse.OK
+	}
+
+	return nil, fuse.ENOENT
+}
+
+func (fs *KafkaRoFs) blockingGet(topic string, partition int32, offset int64) ([]byte,
+	fuse.Status) {
+	// we don't want to block waiting on an offset that is in the past
+	// and no longer available from kafka
+	nE := func() (bool, error) {
+		return fs.offsetNotExpired(topic, partition, offset)
+	}
+
+	for notExpired, err := nE(); notExpired; notExpired, err = nE() {
+		if err != nil {
+			return nil, fuse.EIO
+		}
+
+		isFuture, err := fs.offsetIsFuture(topic, partition, offset)
+		if err != nil {
+			return nil, fuse.EIO
+		}
+
+		if isFuture {
+			time.Sleep(1 * time.Millisecond)
+			continue
+		}
+
+		msgBytes, err := fs.KafkaClient.GetMessage(topic, partition, offset)
+		if err != nil {
+			return nil, fuse.EIO
+		}
+
+		if msgBytes == nil {
+			// this shouldn't happen unless the messages are expiring
+			// very fast, but who knows
+			return nil, fuse.ENOENT
+		}
+
+		err = fs.addUserFile(topic, partition, offset)
+		if err != nil {
+			return nil, fuse.EIO
+		}
+
+		return msgBytes, fuse.OK
 	}
 
 	return nil, fuse.ENOENT
@@ -283,49 +324,13 @@ func (fs *KafkaRoFs) Open(name string, flags uint32,
 		return nil, fuse.EPERM
 	}
 
-	// we don't want to block waiting on an offset that is in the past
-	// and no longer available from kafka
-	nE := func() (bool, error) {
-		return fs.offsetNotExpired(parsed.Topic, parsed.Partition, parsed.Offset)
+	msgBytes, ferr := fs.blockingGet(parsed.Topic, parsed.Partition, parsed.Offset)
+
+	if ferr != fuse.OK {
+		return nil, ferr
 	}
 
-	for notExpired, err := nE(); notExpired; notExpired, err = nE() {
-		if err != nil {
-			return nil, fuse.EIO
-		}
-
-		isFuture, err := fs.offsetIsFuture(parsed.Topic, parsed.Partition,
-			parsed.Offset)
-		if err != nil {
-			return nil, fuse.EIO
-		}
-
-		if isFuture {
-			time.Sleep(1 * time.Millisecond)
-			continue
-		}
-
-		msgBytes, err := fs.KafkaClient.GetMessage(parsed.Topic, parsed.Partition,
-			parsed.Offset)
-		if err != nil {
-			return nil, fuse.EIO
-		}
-
-		if msgBytes == nil {
-			// this shouldn't happen unless the messages are expiring
-			// very fast, but who knows
-			return nil, fuse.ENOENT
-		}
-
-		err = fs.addUserFile(parsed.Topic, parsed.Partition, parsed.Offset)
-		if err != nil {
-			return nil, fuse.EIO
-		}
-
-		return nodefs.NewDataFile(msgBytes), fuse.OK
-	}
-
-	return nil, fuse.ENOENT
+	return nodefs.NewDataFile(msgBytes), fuse.OK
 }
 
 func (fs *KafkaRoFs) addUserFile(topic string, partition int32, offset int64) error {
