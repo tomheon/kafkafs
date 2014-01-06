@@ -79,8 +79,8 @@ Gave you the output
 But let's say you want to see the message at offset 101.  Just ```cat
 101``` it, as if it existed, and kafkafs will fetch it from Kafka for
 you.  If the offset does not yet exist (for example, if you ```cat
-199842```), the call will block until the message becomes available
-(or until you cancel it).
+199842```), the call will block until the message becomes available or
+one second has passed (at which point it fails and you can try again).
 
 Once you request an arbitrary offset, it will remain in the fs until
 you ```rm``` it (unlike the earliest and latest offsets, which are
@@ -95,12 +95,17 @@ library.  For example, in python, something like:
     os.chdir("/your/mount/point/sometopic/0")
     next_offset = max([int(offset) for offset in os.listdir(".")]) + 1
     while True:
-        # blocks until next message is available
-        f = open("/your/mount/point/sometopic/0/%d" % next_offset, 'rb')
-        consume(f.read())
-        f.close()
-        os.unlink("/your/mount/point/sometopic/0/%d" % next_offset)
-        next_offset += 1
+        try:
+            # blocks until next message is available or 1 second has passed
+            f = open("/your/mount/point/sometopic/0/%d" % next_offset, 'rb')
+            consume(f.read())
+            f.close()
+            os.unlink("/your/mount/point/sometopic/0/%d" % next_offset)
+            next_offset += 1
+        except IOError:
+            # a second passed with no new message, loop
+            pass
+
 
 All the fs operations are going to make this more costly than a normal
 Kafka client, however, so you'll have to make sure your consumer can

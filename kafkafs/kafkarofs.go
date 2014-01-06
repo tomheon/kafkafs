@@ -172,6 +172,8 @@ func (fs *KafkaRoFs) blockingGet(topic string, partition int32, offset int64) ([
 		return fs.offsetNotExpired(topic, partition, offset)
 	}
 
+	try := 0
+
 	for notExpired, err := nE(); notExpired; notExpired, err = nE() {
 		if err != nil {
 			return nil, fuse.EIO
@@ -183,7 +185,11 @@ func (fs *KafkaRoFs) blockingGet(topic string, partition int32, offset int64) ([
 		}
 
 		if isFuture {
-			time.Sleep(1 * time.Millisecond)
+			if try > 10 {
+				return nil, fuse.ENOENT
+			}
+			time.Sleep(100 * time.Millisecond)
+			try++
 			continue
 		}
 
