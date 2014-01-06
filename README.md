@@ -89,7 +89,7 @@ automatically refreshed on each directory open).
 ## Using as a Consumer
 
 It's possible to use kafkafs as an ad-hoc consumer of a kafka message
-stream, if, for some reason, you don't wnat to use a Kafka client
+stream, if, for some reason, you don't want to use a Kafka client
 library.  For example, in python, something like:
 
     os.chdir("/your/mount/point/sometopic/0")
