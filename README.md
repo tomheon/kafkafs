@@ -5,6 +5,8 @@ Kafka messages, rather than as a consumer of a stream of messages,
 though it's possible to use it as a consumer (see "Using as a
 Consumer" below).
 
+This is alpha software.  Use at your own risk.
+
 ## Building
 
 Make sure fuse is installed, then:
@@ -118,3 +120,4 @@ Report them here at Github.
 ## Contributions
 
 Welcome.
+
