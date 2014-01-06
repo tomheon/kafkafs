@@ -283,71 +283,49 @@ func (fs *KafkaRoFs) Open(name string, flags uint32,
 		return nil, fuse.EPERM
 	}
 
-	msgBytes, err := fs.KafkaClient.GetMessage(parsed.Topic, parsed.Partition,
-		parsed.Offset)
-	if err != nil {
-		return nil, fuse.EIO
-	}
-
-	return nodefs.NewDataFile(msgBytes), fuse.OK
-}
-
-func (fs *KafkaRoFs) Mknod(name string, mode uint32, dev uint32,
-	context *fuse.Context) fuse.Status {
-
-	parsed, err := fs.parseAndValidate(name)
-	if err != nil {
-		return fuse.EIO
-	}
-
-	if !parsed.IsValid || parsed.Offset == -1 {
-		return fuse.ENOENT
-	}
-
 	// we don't want to block waiting on an offset that is in the past
 	// and no longer available from kafka
-
 	nE := func() (bool, error) {
 		return fs.offsetNotExpired(parsed.Topic, parsed.Partition, parsed.Offset)
 	}
 
 	for notExpired, err := nE(); notExpired; notExpired, err = nE() {
 		if err != nil {
-			return fuse.EIO
+			return nil, fuse.EIO
 		}
 
 		isFuture, err := fs.offsetIsFuture(parsed.Topic, parsed.Partition,
 			parsed.Offset)
 		if err != nil {
-			return fuse.EIO
+			return nil, fuse.EIO
 		}
 
 		if isFuture {
-			time.Sleep(1 * time.Second)
+			time.Sleep(1 * time.Millisecond)
 			continue
 		}
 
 		msgBytes, err := fs.KafkaClient.GetMessage(parsed.Topic, parsed.Partition,
 			parsed.Offset)
 		if err != nil {
-			return fuse.EIO
+			return nil, fuse.EIO
 		}
 
 		if msgBytes == nil {
 			// this shouldn't happen unless the messages are expiring
 			// very fast, but who knows
-			return fuse.ENOENT
+			return nil, fuse.ENOENT
 		}
 
 		err = fs.addUserFile(parsed.Topic, parsed.Partition, parsed.Offset)
 		if err != nil {
-			return fuse.EIO
+			return nil, fuse.EIO
 		}
 
-		return fuse.OK
+		return nodefs.NewDataFile(msgBytes), fuse.OK
 	}
 
-	return fuse.ENOENT
+	return nil, fuse.ENOENT
 }
 
 func (fs *KafkaRoFs) addUserFile(topic string, partition int32, offset int64) error {
