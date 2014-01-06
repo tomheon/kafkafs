@@ -97,10 +97,10 @@ library.  For example, in python, something like:
     while True:
         try:
             # blocks until next message is available or 1 second has passed
-            f = open("/your/mount/point/sometopic/0/%d" % next_offset, 'rb')
+            f = open("%d" % next_offset, 'rb')
             consume(f.read())
             f.close()
-            os.unlink("/your/mount/point/sometopic/0/%d" % next_offset)
+            os.unlink("%d" % next_offset)
             next_offset += 1
         except IOError:
             # a second passed with no new message, loop
